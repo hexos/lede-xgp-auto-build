@@ -14,12 +14,14 @@ on:
 
 env:
   TZ: Asia/Shanghai
+  BUILD_LOG_ARG: ${{ inputs.log_switch == 'true' && 'V=s' || '' }}
 
 jobs:
   build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 360
     steps:
-      - name: Check initial disk space
+      - name: Check initial disk & memory
         run: |
           df -h
           free -h
@@ -34,7 +36,15 @@ jobs:
           tool-cache: true
           swap-storage: false
 
-      - name: Check space after deep clean
+      - name: Create extra 3G swap for anti‑OOM
+        run: |
+          sudo fallocate -l 3G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+
+      - name: Check space after deep clean + swap
         run: |
           df -h
           free -h
@@ -42,7 +52,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Pre-clean apt
+      - name: Pre‑clean apt
         run: |
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/* /tmp/*
@@ -59,22 +69,33 @@ jobs:
 
       - name: Feeds update & import config
         run: |
+          set -e
           cd lede
           make distclean
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           cp ../xgp.config .config
           make defconfig
+          make oldconfig <<< ""
+          git diff .config || true
+
+      - name: Cache dl source files
+        uses: actions/cache@v4
+        with:
+          path: lede/dl
+          key: lede-dl-${{ github.run_id }}
+          restore-keys: |
+            lede-dl-
 
       - name: Download source packages
         run: |
           cd lede
-          make -j1 download V=s
+          make -j1 download ${{ env.BUILD_LOG_ARG }}
 
       - name: Build firmware
         run: |
           cd lede
-          make -j1 V=s
+          make -j1 ${{ env.BUILD_LOG_ARG }}
 
       - name: Verify firmware output
         run: |
@@ -83,6 +104,7 @@ jobs:
             echo "ERROR: 固件输出目录不存在，编译失败！"
             exit 1
           fi
+          ls -la ${OUTPUT_DIR}/
           IMG_COUNT=$(ls ${OUTPUT_DIR}/*.img.gz 2>/dev/null | wc -l)
           echo "找到 ${IMG_COUNT} 个 img.gz 固件文件"
           if [ "${IMG_COUNT}" -eq 0 ]; then
@@ -99,6 +121,7 @@ jobs:
           cp ${OUTPUT_DIR}/*.buildinfo release_assets/ || true
           cp ${OUTPUT_DIR}/profiles.json release_assets/ || true
           cp ${OUTPUT_DIR}/sha256sums release_assets/ || true
+          cp ${OUTPUT_DIR}/version.buildinfo release_assets/ 2>/dev/null || true
           bash -c "cd lede && git log -n 30" > release_assets/recent_git.log
 
       - name: Upload build artifacts
@@ -118,6 +141,7 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
+    timeout-minutes: 60
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -138,6 +162,7 @@ jobs:
       - name: Prepare release info
         id: release-prepare
         run: |
+          set -e
           current_date=$(date +'%y%m%d')
           current_time=$(date +'%H%M%S')
           new_tag=v0.${current_date}.${current_time}
@@ -197,7 +222,7 @@ jobs:
           if [ -n "${SRC_IMG}" ]; then
             DST_IMG="release_assets/${{ steps.release-prepare.outputs.IMAGE_PREFIX }}squashfs-sysupgrade.img.gz"
             mv "${SRC_IMG}" "${DST_IMG}"
-            echo "固件重命名完成"
+            echo "固件重命名完成: ${DST_IMG}"
           else
             echo "未找到sysupgrade固件，跳过重命名"
           fi
