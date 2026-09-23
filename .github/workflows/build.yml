@@ -8,8 +8,11 @@ on:
       log_switch:
         description: "开启详细编译日志 (V=s)"
         required: false
-        default: false
-        type: boolean
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
   # repository_dispatch:
   #   types: [build-trigger]
   # push:
@@ -29,8 +32,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    env:
-      TZ: ${{ env.TZ }}
     steps:
       - name: Check build space
         run: |
@@ -69,9 +70,9 @@ jobs:
         if: always()
         with:
           path: |
-            ${{ env.REPO_DIR }}/dl
-            ${{ env.REPO_DIR }}/staging_dir
-          key: ${{ runner.os }}-openwrt-${{ hashFiles(env.FEEDS_CONF, env.CONFIG_FILE) }}
+            lede/dl
+            lede/staging_dir
+          key: ${{ runner.os }}-openwrt-${{ hashFiles('lede/feeds.conf.default', 'xgp.config') }}
           restore-keys: |
             ${{ runner.os }}-openwrt-
 
@@ -79,13 +80,13 @@ jobs:
       - name: Refresh stamp files (cache hit only)
         if: steps.toolchain-cache.outputs.cache-hit == 'true'
         run: |
-          find ${{ env.REPO_DIR }}/staging_dir -type f -name ".stamp_*" -exec touch {} +
+          find lede/staging_dir -type f -name ".stamp_*" -exec touch {} +
           echo "缓存命中，已刷新编译时间戳"
 
       # 单独执行源码下载，下载失败直接终止，不浪费编译时间
       - name: Download source packages
         run: |
-          cd ${{ env.REPO_DIR }}
+          cd lede
           make download -j$(nproc)
 
       - name: Build firmware
@@ -99,7 +100,7 @@ jobs:
       # 编译产物校验，没生成固件直接报错终止
       - name: Verify firmware output
         run: |
-          OUTPUT_DIR="${{ env.REPO_DIR }}/bin/targets/${{ env.TARGET_ARCH }}"
+          OUTPUT_DIR="lede/bin/targets/rockchip/armv8"
           if [ ! -d "${OUTPUT_DIR}" ]; then
             echo "ERROR: 固件输出目录不存在，编译失败！"
             exit 1
@@ -114,7 +115,7 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release_assets
-          OUTPUT_DIR="${{ env.REPO_DIR }}/bin/targets/${{ env.TARGET_ARCH }}"
+          OUTPUT_DIR="lede/bin/targets/rockchip/armv8"
           cp ${OUTPUT_DIR}/*.img.gz release_assets/ || true
           cp ${OUTPUT_DIR}/openwrt-rockchip-armv8-nlnet_xiguapi-v3.manifest release_assets/ || true
           cp ${OUTPUT_DIR}/config.buildinfo release_assets/ || true
@@ -122,7 +123,7 @@ jobs:
           cp ${OUTPUT_DIR}/profiles.json release_assets/ || true
           cp ${OUTPUT_DIR}/version.buildinfo release_assets/ || true
           cp ${OUTPUT_DIR}/sha256sums release_assets/ || true
-          bash -c "cd ${{ env.REPO_DIR }} && git log -n 30" > release_assets/recent_git.log
+          bash -c "cd lede && git log -n 30" > release_assets/recent_git.log
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -142,8 +143,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      TZ: ${{ env.TZ }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -248,12 +247,12 @@ jobs:
           fi
 
       - name: Create and push tag
+        continue-on-error: true
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git tag ${{ steps.release-prepare.outputs.new_tag }}
           git push origin ${{ steps.release-prepare.outputs.new_tag }}
-        continue-on-error: true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
