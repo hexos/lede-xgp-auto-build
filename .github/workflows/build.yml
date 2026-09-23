@@ -39,14 +39,24 @@ jobs:
           lsblk
           free -h
 
-      - name: Maximize build space
+      - name: Maximize build space (深度清理)
         uses: easimon/maximize-build-space@master
         with:
-          root-reserve-mb: 10240
+          root-reserve-mb: 1024
           swap-size-mb: 1024
-          remove-dotnet: 'false'
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
 
-      - name: Check build space after maximize
+      - name: Pre free disk space (额外清理)
+        run: |
+          sudo apt-get clean
+          sudo apt-get autoremove -y
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /tmp/*
+          sudo rm -rf /var/lib/apt/lists/*
+          df -h
+
+      - name: Check build space after cleanup
         run: |
           df -h
           lsblk
@@ -57,6 +67,7 @@ jobs:
 
       - name: Setup build environment
         run: |
+          sudo apt-get update
           sudo ./install-env.sh
 
       - name: Prepare source code
