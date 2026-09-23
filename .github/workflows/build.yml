@@ -15,7 +15,6 @@ on:
 env:
   TZ: Asia/Shanghai
   REPO_DIR: lede
-  TARGET_ARCH: rockchip/armv8
   CONFIG_FILE: xgp.config
   FEEDS_CONF: lede/feeds.conf.default
 
