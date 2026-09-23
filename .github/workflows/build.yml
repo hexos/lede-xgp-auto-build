@@ -36,9 +36,9 @@ jobs:
           tool-cache: true
           swap-storage: false
 
-      - name: Create extra 3G swap for anti‑OOM
+      - name: Create extra 2G swap for anti‑OOM
         run: |
-          sudo fallocate -l 3G /swapfile
+          sudo fallocate -l 2G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
