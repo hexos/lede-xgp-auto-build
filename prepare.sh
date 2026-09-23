@@ -21,6 +21,8 @@ echo "src-git qmodem https://github.com/FUjr/QModem.git;main" >> feeds.conf
 #echo "src-git qmodem https://github.com/zzzz0317/QModem.git;stable202508" >> feeds.conf
 rm -rf files
 cp -r ../files .
+
+# 拉取自定义zz目录软件包
 if [ -d "package/zz/luci-app-argon-config" ]; then
     cd package/zz/luci-app-argon-config
     git pull || { echo "luci-app-argon-config git pull failed"; exit 1; }
@@ -28,6 +30,7 @@ if [ -d "package/zz/luci-app-argon-config" ]; then
 else
     git clone https://github.com/jerrykuku/luci-app-argon-config.git package/zz/luci-app-argon-config || { echo "luci-app-argon-config git clone failed"; exit 1; }
 fi
+
 if [ -d "package/zz/luci-theme-alpha" ]; then
     cd package/zz/luci-theme-alpha
     git pull || { echo "luci-theme-alpha git pull failed"; exit 1; }
@@ -35,6 +38,7 @@ if [ -d "package/zz/luci-theme-alpha" ]; then
 else
     git clone https://github.com/derisamedia/luci-theme-alpha.git package/zz/luci-theme-alpha || { echo "luci-theme-alpha git clone failed"; exit 1; }
 fi
+
 if [ -d "package/zz/kmod-fb-tft-gc9307" ]; then
     cd package/zz/kmod-fb-tft-gc9307
     git pull || { echo "kmod-fb-tft-gc9307 git pull failed"; exit 1; }
@@ -42,6 +46,7 @@ if [ -d "package/zz/kmod-fb-tft-gc9307" ]; then
 else
     git clone https://github.com/zzzz0317/kmod-fb-tft-gc9307.git package/zz/kmod-fb-tft-gc9307 || { echo "kmod-fb-tft-gc9307 git clone failed"; exit 1; }
 fi
+
 if [ -d "package/zz/xgp-v3-screen" ]; then
     cd package/zz/xgp-v3-screen
     git pull || { echo "xgp-v3-screen git pull failed"; exit 1; }
@@ -49,3 +54,20 @@ if [ -d "package/zz/xgp-v3-screen" ]; then
 else
     git clone https://github.com/zzzz0317/xgp-v3-screen.git package/zz/xgp-v3-screen || { echo "xgp-v3-screen git clone failed"; exit 1; }
 fi
+
+##############################
+## 修复依赖警告
+##############################
+# 修复 luci-theme-alpha 缺失 luci-app-alpha-config
+sed -i 's/\+luci-app-alpha-config//g' package/zz/luci-theme-alpha/Makefile
+
+# feeds 更新 & 安装
+./scripts/feeds update -i
+./scripts/feeds install -a
+
+make defconfig
+
+# 导入你的 xgp.config 编译配置（关键！）
+cp ../xgp.config ./.config
+
+echo "===== 源码&配置准备完成，可以执行 make -j2 V=s 编译 ====="
