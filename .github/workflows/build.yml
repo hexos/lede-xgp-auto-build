@@ -1,8 +1,6 @@
 name: Build and Release (Rockchip ARMv8)
 
 on:
-  # schedule:
-  #   - cron: '0 18 * * 4'
   workflow_dispatch:
     inputs:
       log_switch:
@@ -13,15 +11,7 @@ on:
         options:
           - "true"
           - "false"
-  # repository_dispatch:
-  #   types: [build-trigger]
-  # push:
-  #   branches:
-  #     - main
-  #   tags:
-  #     - '*'
 
-# 全局环境变量统一管理，修改配置只需改此处
 env:
   TZ: Asia/Shanghai
   REPO_DIR: lede
@@ -31,7 +21,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - name: Check build space
         run: |
@@ -74,7 +64,6 @@ jobs:
         run: |
           ./prepare.sh
 
-      # 缓存工具链+源码包，增加降级匹配提升缓存命中率
       - name: Cache dl & toolchain
         uses: actions/cache@v3
         id: toolchain-cache
@@ -87,14 +76,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-openwrt-
 
-      # 缓存命中时刷新时间戳，避免工具链重复编译
       - name: Refresh stamp files (cache hit only)
         if: steps.toolchain-cache.outputs.cache-hit == 'true'
         run: |
           find lede/staging_dir -type f -name ".stamp_*" -exec touch {} +
           echo "缓存命中，已刷新编译时间戳"
 
-      # 单独执行源码下载，下载失败直接终止，不浪费编译时间
       - name: Download source packages
         run: |
           cd lede
@@ -108,7 +95,6 @@ jobs:
             ./build.sh
           fi
 
-      # 编译产物校验，没生成固件直接报错终止
       - name: Verify firmware output
         run: |
           OUTPUT_DIR="lede/bin/targets/rockchip/armv8"
@@ -151,7 +137,7 @@ jobs:
 
   release:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
     steps:
@@ -191,7 +177,6 @@ jobs:
           image_prefix=LEDE-zzXGPv3-${current_date}${current_time}-
           echo "IMAGE_PREFIX=${image_prefix}" >> $GITHUB_OUTPUT
 
-          # Release 头部兜底，文件缺失不崩溃
           if [ -f release_header.md ]; then
             cat release_header.md > release_info.md
           else
@@ -199,7 +184,6 @@ jobs:
           fi
           echo "" >> release_info.md
 
-          # 本仓库变更日志
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -n "$PREVIOUS_TAG" ]; then
               echo "<details>" >> release_info.md
@@ -210,7 +194,6 @@ jobs:
               echo "</details>" >> release_info.md
           fi
 
-          # LEDE 源码变更
           if [ -f release_assets/recent_git.log ]; then
             echo "<details>" >> release_info.md
             echo "<summary>LEDE 最近变更</summary>" >> release_info.md
@@ -222,7 +205,6 @@ jobs:
             echo "</details>" >> release_info.md
           fi
 
-          # 软件包清单
           if [ -f release_assets/openwrt-rockchip-armv8-nlnet_xiguapi-v3.manifest ]; then
             echo "<details>" >> release_info.md
             echo "<summary>内置软件包列表</summary>" >> release_info.md
@@ -234,7 +216,6 @@ jobs:
             echo "</details>" >> release_info.md
           fi
 
-          # 文件哈希校验
           if [ -f release_assets/sha256sums ]; then
             echo "<details>" >> release_info.md
             echo "<summary>文件哈希校验</summary>" >> release_info.md
@@ -276,7 +257,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 自动清理7天前的旧工作流记录，保留最近5条
       - name: Clean old workflow runs
         uses: LeeHe-gif/delete-workflow-runs@main
         continue-on-error: true
