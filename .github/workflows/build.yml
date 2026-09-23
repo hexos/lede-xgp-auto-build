@@ -28,7 +28,6 @@ jobs:
           df -h
           free -h
 
-      # 重点！！！ 在checkout代码之前就执行深度磁盘释放
       - name: Max free disk space
         uses: jlumbroso/free-disk-space@main
         with:
@@ -47,9 +46,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Pre‑clean apt
+      - name: Pre-clean apt
         run: |
-          sudo apt‑get clean
+          sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/* /tmp/*
           df -h
 
