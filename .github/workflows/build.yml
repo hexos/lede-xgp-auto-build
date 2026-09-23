@@ -6,7 +6,7 @@ on:
       log_switch:
         description: "开启详细编译日志 (V=s)"
         required: false
-        default: "false"
+        default: "true"
         type: choice
         options:
           - "true"
@@ -57,40 +57,21 @@ jobs:
           sudo apt-get update
           sudo ./install-env.sh
 
-      - name: Prepare source code
+      - name: Prepare source code & distclean
         run: |
           ./prepare.sh
-
-      - name: Cache dl & toolchain
-        uses: actions/cache@v3
-        id: toolchain-cache
-        if: always()
-        with:
-          path: |
-            lede/dl
-            lede/staging_dir
-          key: ${{ runner.os }}-openwrt-${{ hashFiles('lede/feeds.conf.default', 'xgp.config') }}
-          restore-keys: |
-            ${{ runner.os }}-openwrt-
-
-      - name: Refresh stamp files (cache hit only)
-        if: steps.toolchain-cache.outputs.cache-hit == 'true'
-        run: |
-          find lede/staging_dir -type f -name ".stamp_*" -exec touch {} +
-          echo "缓存命中，已刷新编译时间戳"
+          cd lede
+          make distclean
 
       - name: Download source packages
         run: |
           cd lede
-          make download -j$(nproc)
+          make -j1 download V=s
 
       - name: Build firmware
         run: |
-          if [[ "${{ inputs.log_switch }}" == "true" ]]; then
-            ./build.sh V=s
-          else
-            ./build.sh
-          fi
+          cd lede
+          make -j1 V=s
 
       - name: Verify firmware output
         run: |
@@ -111,11 +92,9 @@ jobs:
           mkdir -p release_assets
           OUTPUT_DIR="lede/bin/targets/rockchip/armv8"
           cp ${OUTPUT_DIR}/*.img.gz release_assets/ || true
-          cp ${OUTPUT_DIR}/openwrt-rockchip-armv8-nlnet_xiguapi-v3.manifest release_assets/ || true
-          cp ${OUTPUT_DIR}/config.buildinfo release_assets/ || true
-          cp ${OUTPUT_DIR}/feeds.buildinfo release_assets/ || true
+          cp ${OUTPUT_DIR}/*.manifest release_assets/ || true
+          cp ${OUTPUT_DIR}/*.buildinfo release_assets/ || true
           cp ${OUTPUT_DIR}/profiles.json release_assets/ || true
-          cp ${OUTPUT_DIR}/version.buildinfo release_assets/ || true
           cp ${OUTPUT_DIR}/sha256sums release_assets/ || true
           bash -c "cd lede && git log -n 30" > release_assets/recent_git.log
 
@@ -169,21 +148,16 @@ jobs:
             VERSION=$(cat release_assets/version.buildinfo | grep '^r' | head -n 1 || echo "unknown")
           fi
           echo "RELEASE_TITLE=${RELEASE_DATE} - ${VERSION}" >> $GITHUB_OUTPUT
-
-          image_prefix=LEDE-zzXGPv3-${current_date}${current_time}-
+          image_prefix=LEDE-XGP-${current_date}${current_time}-
           echo "IMAGE_PREFIX=${image_prefix}" >> $GITHUB_OUTPUT
 
-          if [ -f release_header.md ]; then
-            cat release_header.md > release_info.md
-          else
-            echo "# LEDE OpenWrt 固件 - Rockchip ARMv8" > release_info.md
-          fi
+          echo "# LEDE OpenWrt 固件 - Rockchip ARMv8" > release_info.md
           echo "" >> release_info.md
 
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -n "$PREVIOUS_TAG" ]; then
               echo "<details>" >> release_info.md
-              echo "<summary>本仓库变更 (${PREVIOUS_TAG}..${new_tag})</summary>" >> release_info.md
+              echo "<summary>仓库变更 (${PREVIOUS_TAG}..${new_tag})</summary>" >> release_info.md
               echo "" >> release_info.md
               git log --pretty=format:"%h %s" ${PREVIOUS_TAG}..HEAD >> release_info.md
               echo "" >> release_info.md
@@ -192,21 +166,10 @@ jobs:
 
           if [ -f release_assets/recent_git.log ]; then
             echo "<details>" >> release_info.md
-            echo "<summary>LEDE 最近变更</summary>" >> release_info.md
+            echo "<summary>LEDE 源码提交记录</summary>" >> release_info.md
             echo "" >> release_info.md
             echo "\`\`\`" >> release_info.md
             cat release_assets/recent_git.log >> release_info.md
-            echo "\`\`\`" >> release_info.md
-            echo "" >> release_info.md
-            echo "</details>" >> release_info.md
-          fi
-
-          if [ -f release_assets/openwrt-rockchip-armv8-nlnet_xiguapi-v3.manifest ]; then
-            echo "<details>" >> release_info.md
-            echo "<summary>内置软件包列表</summary>" >> release_info.md
-            echo "" >> release_info.md
-            echo "\`\`\`" >> release_info.md
-            cat release_assets/openwrt-rockchip-armv8-nlnet_xiguapi-v3.manifest >> release_info.md
             echo "\`\`\`" >> release_info.md
             echo "" >> release_info.md
             echo "</details>" >> release_info.md
@@ -225,13 +188,13 @@ jobs:
 
       - name: Rename sysupgrade image
         run: |
-          SRC_IMG="release_assets/openwrt-rockchip-armv8-nlnet_xiguapi-v3-squashfs-sysupgrade.img.gz"
-          DST_IMG="release_assets/${{ steps.release-prepare.outputs.IMAGE_PREFIX }}squashfs-sysupgrade.img.gz"
-          if [ -f "${SRC_IMG}" ]; then
+          SRC_IMG=$(ls release_assets/*-squashfs-sysupgrade.img.gz 2>/dev/null || true)
+          if [ -n "${SRC_IMG}" ]; then
+            DST_IMG="release_assets/${{ steps.release-prepare.outputs.IMAGE_PREFIX }}squashfs-sysupgrade.img.gz"
             mv "${SRC_IMG}" "${DST_IMG}"
             echo "固件重命名完成"
           else
-            echo "未找到 sysupgrade 固件，跳过重命名"
+            echo "未找到sysupgrade固件，跳过重命名"
           fi
 
       - name: Create and push tag
@@ -252,10 +215,3 @@ jobs:
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Clean old workflow runs
-        uses: LeeHe-gif/delete-workflow-runs@main
-        continue-on-error: true
-        with:
-          retain_days: 7
-          keep_minimum_runs: 5
