@@ -32,7 +32,7 @@ jobs:
           haskell: true
           large-packages: true
           tool-cache: true
-          swap-storage: true
+          swap-storage: false
 
       - name: Check space after deep clean
         run: |
@@ -69,12 +69,12 @@ jobs:
       - name: Download source packages
         run: |
           cd lede
-          make -j1 download V=s
+          make -j2 download V=s
 
       - name: Build firmware
         run: |
           cd lede
-          make -j1 V=s
+          make -j2 V=s
 
       - name: Verify firmware output
         run: |
