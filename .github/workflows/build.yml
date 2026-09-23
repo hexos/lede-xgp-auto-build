@@ -36,9 +36,11 @@ jobs:
           tool-cache: true
           swap-storage: false
 
-      - name: Create extra 2G swap for anti‑OOM
+      - name: Create extra 3G swap for anti‑OOM
         run: |
-          sudo fallocate -l 2G /swapfile
+          sudo swapoff /swapfile 2>/dev/null || true
+          sudo rm -f /swapfile
+          sudo dd if=/dev/zero of=/swapfile bs=1M count=3072 status=none
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
@@ -83,7 +85,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: lede/dl
-          key: lede-dl-${{ github.run_id }}
+          key: lede-dl-${{ hashFiles('xgp.config') }}
           restore-keys: |
             lede-dl-
 
